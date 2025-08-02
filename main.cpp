@@ -79,8 +79,7 @@ Eigen::Vector3f texture_fragment_shader(const fragment_shader_payload& payload)
     return result_color * 255.f;
 }
 
-Eigen::Vector3f phong_fragment_shader(const fragment_shader_payload& payload)
-{
+Eigen::Vector3f phong_fragment_shader(const fragment_shader_payload& payload){
     Eigen::Vector3f ka = Eigen::Vector3f(0.005, 0.005, 0.005);
     Eigen::Vector3f kd = payload.color;
     Eigen::Vector3f ks = Eigen::Vector3f(0.7937, 0.7937, 0.7937);
@@ -323,6 +322,10 @@ void log(std::string a){
 }
 
 int main(){
+    system("cls");
+    log("###########################################");
+    log("#     Mister Renderer v1.0 by 5xian39     #");
+    log("###########################################");
     log("mister is running...");
     std::vector<Triangle> TriangleList;
 
@@ -336,8 +339,6 @@ int main(){
     std::string obj_path = "../models/spot/spot_triangulated_good.obj";
     log("please type the obj path...");
     std::cin>>obj_path;
-
-    std::string texture_path = "../models/spot/hmap.jpg";
 
     bool loadResult = loader.LoadFile(obj_path);
     if(!loadResult) {log("ERROR!the path is invalid."); exit(-1);}
@@ -356,9 +357,7 @@ int main(){
     }
 
     log("load TriangleList successfully.");
-    log("please type the size of screen...");
     int w = 700, h = 700;
-    std::cin>>w>>h;
 
     Eigen::Vector3f eye_pos = {0,0,10};
     float angle = 140.0;
@@ -370,18 +369,19 @@ int main(){
     r.set_view(get_view_matrix(eye_pos));
     r.set_projection(get_projection_matrix(45.0, 1, 0.1, 50));
     
-    log("please type the shader type... (normal / texture / dump / displacement / phong)");
+    log("please type the shader type... (normal / texture / bump / displacement / phong)");
     std::string shader_type = "normal";
     std::cin >> shader_type;
 
+    std::string texture_path = "invalid";
     std::function<Eigen::Vector3f(fragment_shader_payload)> active_shader = phong_fragment_shader;
 
     if (shader_type == "texture"){
         std::cout << "Rasterizing using the texture shader\n";
         active_shader = texture_fragment_shader;
         log("please type the texture path...");
+        texture_path = "../models/spot/hmap.jpg";
         std::cin >> texture_path;
-        r.set_texture(Texture(texture_path));
     } else if (shader_type == "normal"){
         std::cout << "Rasterizing using the normal shader\n";
         active_shader = normal_fragment_shader;
@@ -391,19 +391,23 @@ int main(){
     } else if (shader_type == "bump"){
         std::cout << "Rasterizing using the bump shader\n";
         active_shader = bump_fragment_shader;
+        log("please type the texture path...");
+        texture_path = "../models/spot/hmap.jpg";
         std::cin >> texture_path;
-        r.set_texture(Texture(texture_path));
     } else if (shader_type == "displacement"){
         std::cout << "Rasterizing using the displacement shader\n";
         active_shader = displacement_fragment_shader;
+        log("please type the texture path...");
+        texture_path = "../models/spot/hmap.jpg";
         std::cin >> texture_path;
-        r.set_texture(Texture(texture_path));
     }
 
+    if(texture_path != "invalid")
+        r.set_texture(Texture(texture_path));
     r.set_fragment_shader(active_shader);
     r.draw(TriangleList);
 
-    cv::Mat image(700, 700, CV_32FC3, r.frame_buf.data());
+    cv::Mat image(w, h, CV_32FC3, r.frame_buf.data());
     image.convertTo(image, CV_8UC3, 1.0f);
     cv::cvtColor(image, image, cv::COLOR_RGB2BGR);
 

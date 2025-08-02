@@ -30,7 +30,6 @@ void rst::rasterizer::set_fragment_shader(std::function<Eigen::Vector3f(fragment
 void rst::rasterizer::set_pixel(std::tuple<int, int> p, Eigen::Vector3f color){
   int index = get_index(std::get<0>(p), std::get<1>(p));
   frame_buf[index] = color;
-  // int ind = (height-point.y())*width + point.x();
 }
 
 void rst::rasterizer::set_texture(Texture t){
@@ -72,50 +71,43 @@ static std::tuple<float, float, float> computeBarycentric2D(float x, float y, co
 }
 
 // Screen space rasterization
-void rst::rasterizer::rasterize_triangle(const Triangle t, const std::array<Eigen::Vector3f, 3>& view_pos) 
-{
+void rst::rasterizer::rasterize_triangle(const Triangle t, const std::array<Eigen::Vector3f, 3>& view_pos) {
+  auto v = t.toVector4();
 
-    auto v = t.toVector4();
-    auto* v_ptr = v.data();
-    
-    // TODO : Find out the bounding box of current triangle.
-    // iterate through the pixel and find if the current pixel is inside the triangle
-    
-    auto t_bb = _getBoundingBox(t); // 0->minx, 1->maxx, 2->miny, 3->maxy
+  auto* v_ptr = v.data();
+  auto t_bb = _getBoundingBox(t); // 0->minx, 1->maxx, 2->miny, 3->maxy
+  
+  for(int x=t_bb[0];x<=t_bb[1];x++){
+    for(int y=t_bb[3];y>=t_bb[2];y--){
+      float pixel_x = x+0.5;
+      float pixel_y = y+0.5;
+      if(inside_triangle(pixel_x,pixel_y,v_ptr)){
+        auto [alpha,beta,gamma] =  computeBarycentric2D(pixel_x,pixel_y,v_ptr);
 
-    for(int x=t_bb[0];x<=t_bb[1];x++){
-        for(int y=t_bb[3];y>=t_bb[2];y--){
-            float pixel_x = x+0.5;
-            float pixel_y = y+0.5;
+        float Z = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
+        float zp = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
+        zp *= Z;
 
-            if(inside_triangle(pixel_x,pixel_y,v_ptr)){
-                // 让我们计算重心坐标
-                auto [alpha,beta,gamma] =  computeBarycentric2D(pixel_x,pixel_y,v_ptr);
-                            
-                float Z = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
-                float zp = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
-                zp *= Z;
+        if(depth_buf[get_index(x,y)] > zp){
+          auto interpolated_color = (alpha * t.color[0] / v[0].w() + beta * t.color[1] / v[1].w() + gamma * t.color[2] / v[2].w()) * Z;
+          auto interpolated_normal = (alpha * t.normal[0] / v[0].w() + beta * t.normal[1] / v[1].w() + gamma * t.normal[2] / v[2].w()) * Z;
+          auto interpolated_texcoords = (alpha * t.tex_coords[0] / v[0].w() + beta * t.tex_coords[1] / v[1].w() + gamma * t.tex_coords[2] / v[2].w()) * Z;
+          auto interpolated_shadingcoords = (alpha * view_pos[0] / v[0].w() + beta * view_pos[1] / v[1].w() + gamma * view_pos[2] / v[2].w()) * Z;
 
-                if(depth_buf[get_index(x,y)] > zp){
-                    auto interpolated_color = (alpha * t.color[0] / v[0].w() + beta * t.color[1] / v[1].w() + gamma * t.color[2] / v[2].w()) * Z;
-                    auto interpolated_normal = (alpha * t.normal[0] / v[0].w() + beta * t.normal[1] / v[1].w() + gamma * t.normal[2] / v[2].w()) * Z;
-                    auto interpolated_texcoords = (alpha * t.tex_coords[0] / v[0].w() + beta * t.tex_coords[1] / v[1].w() + gamma * t.tex_coords[2] / v[2].w()) * Z;
-                    auto interpolated_shadingcoords = (alpha * view_pos[0] / v[0].w() + beta * view_pos[1] / v[1].w() + gamma * view_pos[2] / v[2].w()) * Z;
-
-                    fragment_shader_payload payload( interpolated_color, interpolated_normal.normalized(), interpolated_texcoords, texture ? &*texture : nullptr);
-                    payload.view_pos = interpolated_shadingcoords;
-                    
-                    depth_buf[get_index(x,y)] = zp;
-                    set_pixel({x,y},fragment_shader(payload));
-                }
-            }
+          fragment_shader_payload payload( interpolated_color, interpolated_normal.normalized(), interpolated_texcoords, texture ? &*texture : nullptr);
+          payload.view_pos = interpolated_shadingcoords;
+          
+          depth_buf[get_index(x,y)] = zp;
+          set_pixel({x,y},fragment_shader(payload));
         }
-    } 
+      }
+    }
+  } 
 }
 
 void rst::rasterizer::clear(){
-  std::fill(depth_buf.begin(),depth_buf.end(),INFINITY);
-  std::fill(frame_buf.begin(),frame_buf.end(),Eigen::Vector3f(0,0,0));
+  std::fill(depth_buf.begin(),depth_buf.end(),std::numeric_limits<float>::infinity());
+  std::fill(frame_buf.begin(),frame_buf.end(),Eigen::Vector3f(57,197,187));
 }
 
 void rst::rasterizer::resize(int width, int height){
@@ -166,13 +158,14 @@ void rst::rasterizer::draw(std::vector<Triangle> TriangleList){
       vert.z() = vert.z() * f1 + f2;
     }
 
-    newtri.setColor(0, 57.0f, 197.0f, 187.0f);
-    newtri.setColor(1, 57.0f, 197.0f, 187.0f);
-    newtri.setColor(2, 57.0f, 197.0f, 187.0f);
+    newtri.setColor(0, 0.223529f, 0.772549f, 0.73333f);
+    newtri.setColor(1, 0.223529f, 0.772549f, 0.73333f);
+    newtri.setColor(2, 0.223529f, 0.772549f, 0.73333f);
 
     rasterize_triangle(newtri, viewspace_pos);
   }
 }
+
 
 rst::rasterizer::rasterizer(int w, int h){
   width = w;
