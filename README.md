@@ -13,6 +13,19 @@
 
 ---
 
+<code>Blinn-Phong</code> 着色器:
+![Blinn-Phong](./output/phong.png)
+<code>Normal</code> 着色器:
+![Normal](./output/normal.png)
+<code>Displacement</code> 着色器:
+![Displacement](./output/displacement.png)
+<code>Bump</code> 着色器:
+![Bump](./output/bump.png)
+<code>Texture</code> 着色器:
+![Texture](./output/texture.png)
+
+---
+
 **轻点喷！！！**
 
 develop by 5xian_39
